@@ -1,4 +1,3 @@
-#Automatizacion Server balanceado
 #!/usr/bin/python
 import subprocess
 import sys
@@ -48,6 +47,18 @@ def crear(nServer):
 	f = open(""+currentPath+"/mnt/etc/sysctl.conf","w")
 	f.write("net.ipv4.ip_forward = 1")
 	f.close()
+
+	fr = open(""+currentPath+"/mnt/etc/hosts", "r")
+	lineas =  fr.readlines()
+	fr.close()
+	fw = open(""+currentPath+"/mnt/etc/hosts", "w")
+	for line in lineas:
+		if "127.0.1.1 cdps cdps" in line:
+			fw.write("127.0.1.1 c1\n")
+		else: 
+			fw.write(line)
+	fw.close()
+
 	subprocess.call("sudo vnx_mount_rootfs -u mnt", shell=True)
 	
 
@@ -73,6 +84,41 @@ def crear(nServer):
 	f = open(""+currentPath+"/mnt/etc/sysctl.conf", "w")
 	f.write("net.ipv4.ip_forward=1  \n")
 	f.close()
+
+	fr = open(""+currentPath+"/mnt/etc/rc.local", "r")
+	lineas =  fr.readlines()
+	fr.close()
+	fw = open(""+currentPath+"/mnt/etc/rc.local", "w")
+	
+	fw.write("#!/bin/sh\n")
+
+		
+	stg1 = "sudo xr -dr --server tcp:0:80 "
+	stg2 = " --web-interface 0:8001"
+	stg3 = ""
+	for server in range(1, nServer + 1):
+		stg3 = stg3 + " --backend 10.0.2.1" + str(server) + ":80"
+
+	fw.write("service apache2 stop\n"+stg1+stg3+stg2+" &\n")
+
+	fw.close()
+
+
+	fr = open(""+currentPath+"/mnt/etc/hosts", "r")
+	lineas =  fr.readlines()
+	fr.close()
+	fw = open(""+currentPath+"/mnt/etc/hosts", "w")
+	for line in lineas:
+		if "127.0.1.1 cdps cdps" in line:
+			fw.write("127.0.1.1 lb\n")
+		else: 
+			fw.write(line)
+	fw.close()
+
+	#fw = open(""+currentPath+"/mnt/proc/sys/net/ipv4/ip_forward", "w")
+	#fw.write("1")
+	#fw.close()
+
 	subprocess.call("sudo vnx_mount_rootfs -u mnt", shell=True)
 
 	#Creacion servidores 
@@ -92,6 +138,22 @@ def crear(nServer):
 		f.write("netmask 255.255.255.0 \n")
 		f.write("gateway 10.0.2.1 \n")
 		f.close()
+
+		fw = open(""+currentPath+"/mnt/var/www/html/index.html", "w")
+		fw.write("S"+str(server))
+		fw.close()
+
+		fr = open(""+currentPath+"/mnt/etc/hosts", "r")
+		lineas =  fr.readlines()
+		fr.close()
+		fw = open(""+currentPath+"/mnt/etc/hosts", "w")
+		for line in lineas:
+			if "127.0.1.1 cdps cdps" in line:
+				fw.write("127.0.1.1 s"+str(server)+"\n")
+			else: 
+				fw.write(line)
+		fw.close()
+
 		subprocess.call("sudo vnx_mount_rootfs -u mnt", shell=True)
 
 
@@ -271,22 +333,49 @@ def createNewVM(name, LAN):
 	subprocess.call("chmod 777 "+name+".xml", shell=True)
 	subprocess.call("chmod 777 "+name+".qcow2", shell=True)
 
+#Monitoriza VMs
+def monitor(vm):
+	subprocess.call("xterm -rv -sb -rightbar -fa monospace -fs 10 -title 'MONITOR "+vm+"' -e 'watch -n 5 sudo virsh dominfo "+vm+"' &", shell=True)
 
 
+def ayuda():
+	print("Este script automatiza la creacion del escenario de pruebas de balanceador de trafico de la segunda parte de la practica 3. \n")
+	print("Para ejecutarlo necesitamos la opcion 'python pfinalp1 comando', siendo comando:\n")
+	print("-Crear: las instancias de las maquinas virtuales.\n")
+	print("-Arrancar: inicia las instancias y las pone en funcionamiento.\n")
+	print("-Parar: deshace la accion de arrancar.\n")
+	print("-Destruir: elimina todos los ficheros del virt-manager y elimina todos los archivos.\n")
+	print("-Monitor: aporta informacion sobre la ejecucion de los programas.\n")
+
+		
 #Orden a ejecutar
 param = sys.argv[1]
 
 
 
-#Variable status. 0, 1, o 2 Maquina de estados. Working
+
+
+
+#Fichro status. 0, 1, o 2 Maquina de estados. Working
 # 0 = No hay maquinas creadas
 # 1 = Maquinas paradas
 # 2 = Maquinas arrancadas
-#state = 0
+
+#if os.path.isfile("status.txt"):
+#	print("Existe el fichero")
+#else:
+#	statusFile = open("status.txt", "w")
+#	statusFile.write("0"+"\n")
+#	statusFile.close()
+
+#statusFile = open("status.txt", "r")
+#status = int(statusFile.readline())
+
 
 #Ejecutar param o saco error
 if param ==  "crear":
 	nServer = 2
+
 	#Acotamos servidores
 	if len(sys.argv) == 3:
 		if int(sys.argv[2]) > 5:
@@ -299,25 +388,48 @@ if param ==  "crear":
 	fnum.write(str(nServer)+"\n")
 	fnum.close()
 	crear(nServer)
-	state = 1
+	#statusFile = open("status.txt", "w")
+	#statusFile.write("1"+"\n")
+	#statusFile.close()
+	
 
 elif param == "arrancar":
 	if len(sys.argv) == 3:
 		arrancar(sys.argv[2])
 	else:
 		arrancar("")
-	state = 2
+	#statusFile = open("status.txt", "w")
+	#statusFile.write("2"+"\n")
+	#statusFile.close()
+	
 
 elif param == "parar":
+
 	if len(sys.argv) == 3:
 		parar(sys.argv[2])
 	else:
 		parar("")	
-	state = 1
+	#statusFile = open("status.txt", "w")
+	#statusFile.write("1"+"\n")
+	#statusFile.close()
+	
 
 elif param == "destruir":
 	destruir()
-	state = 0
+	#statusFile = open("status.txt", "w")
+	#statusFile.write("0"+"\n")
+	#statusFile.close()
+
+elif param == "monitor":
+	if len(sys.argv) == 3:
+		monitor(sys.argv[2])
+	else:
+		sys.stderr.write("Introduce el nombre de una de las VM\n")
+
+
+elif param == "ayuda":
+	ayuda()
+	
 	
 else:
 	sys.stderr.write("Introduccion del comando erronea\n")
